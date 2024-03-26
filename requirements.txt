@@ -1,0 +1,22 @@
+selenium
+webdriver_manager
+pandas
+keras
+scipy
+tensorflow
+pillow
+matplotlib
+torch
+torchvision
+transformers
+Numpy==1.23.5
+# paddlepaddle
+paddlepaddle-gpu
+paddleocr>=2.0.1
+PyMuPDF==1.21.1
+nvidia-tensorrt
+timm
+opencv-python
+pandas
+numpy
+matplotlib
