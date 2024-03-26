@@ -21,8 +21,8 @@ class ScoreCalculator:
 
     def __simple_score(self, x):
         return 2 if x == 1 else 1
-
-    def calculate_score(self, df, article_name):
+    
+    def get_similand_n_uniques(self, df):
         df['id'] = df['original_photo'].apply(
             lambda x: sha256(x.encode('utf-8')).hexdigest())
 
@@ -45,17 +45,23 @@ class ScoreCalculator:
                           'id': x['id']
                       }))
                       .reset_index())
+    
+        similar_df, uniques_df = self.get_similand_n_uniques(df)
 
-        grouped_df = pd.concat([similar_df, uniques_df])
-        sorted_df = grouped_df.sort_values(by='num_languages', ascending=False)
+        # grouped_df = pd.concat([similar_df, uniques_df])
+        # sorted_df = grouped_df.sort_values(by='num_languages', ascending=False)
 
-        sorted_df['decay'] = sorted_df['num_languages'].apply(
+        return similar_df, uniques_df
+
+
+    def calculate_score(self, df, article_name):    
+        df['decay'] = df['num_languages'].apply(
             lambda x: self.__decay_score(x))
-        sorted_df['growth'] = sorted_df['num_languages'].apply(
+        df['growth'] = df['num_languages'].apply(
             lambda x: self.__growth_score(x))
-        sorted_df['parabola'] = sorted_df['num_languages'].apply(
+        df['parabola'] = df['num_languages'].apply(
             lambda x: self.__parabola_score(x))
-        sorted_df['simple'] = sorted_df['num_languages'].apply(
+        df['simple'] = df['num_languages'].apply(
             lambda x: self.__simple_score(x))
 
         langs_to_check = ['pt', 'en', 'es', 'de', 'it', 'ru', 'zh', 'fr']
@@ -66,7 +72,7 @@ class ScoreCalculator:
         dict_scores_simple = {}
 
         for lang in langs_to_check:
-            lang_df = sorted_df[sorted_df['languages'].apply(
+            lang_df = df[df['languages'].apply(
                 lambda x: lang in x)]
 
             dict_scores_decay[lang] = lang_df['decay'].sum()
@@ -82,4 +88,4 @@ class ScoreCalculator:
         }
         scores_list = [{'type': score_type, 'article': article_name, **scores}
                        for score_type, scores in scores.items()]
-        return scores_list, uniques_df
+        return scores_list

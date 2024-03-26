@@ -47,7 +47,6 @@ class LLMZeroShot:
             ocr2_text = ', '.join(ocr2)
 
             user_content = f"Scene 1 could be either {preds1[0]} or {preds1[1]}, with objects {panoptic1_text} {f'texts: {ocr1_text}' if len(ocr1) > 0 else ''}. Scene 2 could be either {preds2[0]} or {preds2[0]}, with objects {panoptic2_text} {f'texts: {ocr2_text}' if len(ocr2) > 0 else ''}."
-
             row = self.db_query("SELECT answer FROM llm_cache WHERE question=?", (user_content,), fetchone=True)
             if row:
                 return self.cache_hit(row[0], start)

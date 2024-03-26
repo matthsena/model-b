@@ -109,7 +109,7 @@ class ImgFeatureExtractor:
                     })
         return results
 
-    def plot_bar(self, dfs, titles, article):
+    def plot_bar(self, dfs, titles, article, isLlm):
         _, axes = plt.subplots(nrows=1, ncols=len(dfs), figsize=(15, 5))
         for df, ax, title in zip(dfs, axes, titles):
             df.plot(kind='bar', ax=ax, legend=True)
@@ -125,9 +125,12 @@ class ImgFeatureExtractor:
         if not os.path.exists('plots'):
             os.makedirs('plots')
         plt.tight_layout()
-        plt.savefig(f'plots/{article}.png')
+        if isLlm:
+            plt.savefig(f'plots/{article}-llm.png')
+        else:
+            plt.savefig(f'plots/{article}.png')
 
-    def generate_plots(self, df):
+    def generate_plots(self, df, isLlm=False):
         articles = df.article.unique()
         articles = np.array(articles)
         articles = np.sort(articles)
@@ -142,7 +145,7 @@ class ImgFeatureExtractor:
             df_parabola = df_article[df_article['type'] == 'parabola']
             df_parabola = df_parabola.drop(columns=['type', 'article'])
             self.plot_bar([df_simple, df_decay, dfgrowth, df_parabola], [
-                     'simple', 'decaimento', 'growth', 'parabola'], article)
+                     'simple', 'decaimento', 'growth', 'parabola'], article, isLlm)
     
     def check_with_llm(self, df, folder):
         all_imgs = self.db.select_by_article(folder)
@@ -172,9 +175,11 @@ class ImgFeatureExtractor:
                             if llm_output is None:
                                 is_similar = False
                             else:
+                                print(f"LLM output: {llm_output}")
                                 is_similar = bool(re.search(r'yes', llm_output, re.IGNORECASE))
                             
                             if is_similar:
+                                print(f"Found similar images: {path} and {img['file_path']}")
                                 found_langs.append(img['lang'])
                                 if img['lang'] not in row['languages']:
                                     row['languages'].append(img['lang'])
@@ -191,10 +196,12 @@ class ImgFeatureExtractor:
             df.to_csv(f'output/{folder}-zero_shot.csv', index=False)
         except Exception as e:
             print(f"Error while saving DataFrame: {e}")
+        return df
 
     def run(self):
         start = time.time()
         final_df = pd.DataFrame()
+        llm_df = pd.DataFrame()
         langs = ['pt', 'en', 'es', 'de', 'it', 'ru', 'zh', 'fr']
         for folder in self.folders:
             base_path = f'{self.dir}/{folder}/'
@@ -205,11 +212,15 @@ class ImgFeatureExtractor:
             results = self.get_results(folder, compare_list, features)
             df_result = pd.DataFrame(results)
             score = ScoreCalculator()
-            score_z, uniques = score.calculate_score(df_result, folder)
-            self.check_with_llm(uniques, folder)
+            similar_df, uniques_df = score.get_similand_n_uniques(df_result)
+            grouped_df = pd.concat([similar_df, uniques_df])
+            score_z = score.calculate_score(grouped_df, folder)
+            df_llm = self.check_with_llm(uniques_df, folder)
             df = pd.DataFrame(score_z)
             final_df = pd.concat([final_df, df])
+            llm_df = pd.concat([llm_df, df_llm])
         self.generate_plots(final_df)
+        self.generate_plots(llm_df, True)
         end = time.time()
         elapsed = (end - start) // 60
         print(
