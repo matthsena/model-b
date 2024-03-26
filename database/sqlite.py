@@ -5,7 +5,7 @@ import sys
 
 class SQLiteOperations:
     def __init__(self):
-        self.conn = sqlite3.connect('./database/data.db')
+        self.conn = sqlite3.connect('./database/data.db', check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.cursor.execute('''
         CREATE TABLE IF NOT EXISTS image_params (
@@ -92,6 +92,30 @@ class SQLiteOperations:
         except Exception as e:
             print(f"Erro ao selecionar dados: {e}")
             return None
+        
+    def select_by_article(self, article):
+        try:
+            self.cursor.execute('''
+        SELECT * FROM image_params WHERE article = ?
+        ''', (article,))
+            rows = self.cursor.fetchall()
+            result = []
+            for row in rows:
+                result.append({
+                    'file_path': row[0],
+                    'lang': row[1],
+                    'article': row[2],
+                    'features': json.loads(row[3]),
+                    'ocr': json.loads(row[4]),
+                    'panoptic': json.loads(row[5]),
+                    'inception_v3': json.loads(row[6]),
+                    'resnet50': json.loads(row[7])
+                })
+            return result
+        except Exception as e:
+            print(f"Erro ao selecionar dados: {e}")
+            return None
+    
     
     def upsert(self, file_path, lang, article, features, ocr, panoptic, inception_v3, resnet50):
         try:

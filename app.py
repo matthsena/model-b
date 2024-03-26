@@ -7,17 +7,20 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 import time
 from itertools import combinations, product
+
 from models.cv.vgg19 import FeatureExtractor
 from models.cv.ocr import OCRPredictor
 from models.cv.inception3 import predict as inception3_predictor
 from models.cv.resnet50 import predict as resnet50_predictor
 from models.cv.panoptic import PanopticPredictor
-import models.llm.zero_shot as zero_shot
+import models.llm.zero_shot as LLMZeroShot
+import utils.prompt as prompt
 from utils.scores import ScoreCalculator
 import matplotlib.pyplot as plt
 import concurrent.futures
 import database.sqlite as database
-
+import time
+import threading
 
 class ImgFeatureExtractor:
     def __init__(self, dir):
@@ -48,8 +51,6 @@ class ImgFeatureExtractor:
                 if feature_history is not None:
                     self.db.upsert(img, lang, folder, features_list, feature_history['ocr'], feature_history[
                             'panoptic'], feature_history['inception_v3'], feature_history['resnet50'])
-                    # print(
-                    #     f"Imagem {img} já existe uma identica no banco de dados.")
                 else:
                     with ThreadPoolExecutor() as executor:
                         img_cv2 = cv2.imread(img)
@@ -142,27 +143,76 @@ class ImgFeatureExtractor:
                      'simple', 'decaimento', 'growth', 'parabola'], article)
     
     def check_with_llm(self, df, folder):
-        all_imgs = self.db.select_all()
+        all_imgs = self.db.select_by_article(folder)
         
-        for _, row in df.iterrows():
-            path = f'{self.dir}/{folder}/{row["languages"][0]}/{row["original_photo"]}'
-            current_img = self.db.select_by_path(path)
-            for img in all_imgs:
-                if img['file_path'] != path and img['lang'] != row['languages'][0] and img['article'] == folder:
-                    preds1 = zero_shot.merge_and_sum_predictions(current_img['inception_v3'], current_img['resnet50'])
-                    preds2 = zero_shot.merge_and_sum_predictions(img['inception_v3'], img['resnet50'])
-                    panoptic1 = zero_shot.format_panoptic_list(current_img['panoptic'])
-                    panoptic2 = zero_shot.format_panoptic_list(img['panoptic'])
-                    ocr1 = zero_shot.discart_or_format_ocr(current_img['ocr'])
-                    ocr2 = zero_shot.discart_or_format_ocr(img['ocr'])
-                    llm_output = zero_shot.generate_text(preds1, preds2, panoptic1, panoptic2, ocr1, ocr2)
-                    # regex
-                    is_similar = True if re.search(r'yes', llm_output, re.IGNORECASE) else False
+        def process_row(row):
+            try:
+                global exception_event
+                if exception_event.is_set():
+                    time.sleep(65)
 
-                    if is_similar:
-                        print(f"Imagem {path} é similar a {img['file_path']}")
-                        print(llm_output)
-                        print(10 * '---')
+                path = f'{self.dir}/{folder}/{row["languages"][0]}/{row["original_photo"]}'
+                db2 = database.SQLiteOperations()
+                current_img = db2.select_by_path(path)
+                zero_shot = LLMZeroShot.LLMZeroShot()
+
+
+                found_langs = []
+                
+                if current_img is not None:  # Add this check
+                    for img in all_imgs:
+                        if img['file_path'] != path and img['lang'] != row['languages'][0] and img['article'] == folder and img['lang'] not in found_langs:
+                            try:
+                                preds1 = prompt.merge_and_sum_predictions(current_img['inception_v3'], current_img['resnet50'])
+                                preds2 = prompt.merge_and_sum_predictions(img['inception_v3'], img['resnet50'])
+                                panoptic1 = prompt.format_panoptic_list(current_img['panoptic'])
+                                panoptic2 = prompt.format_panoptic_list(img['panoptic'])
+                                ocr1 = prompt.discart_or_format_ocr(current_img['ocr'])
+                                ocr2 = prompt.discart_or_format_ocr(img['ocr'])
+                                llm_output = zero_shot.generate_text(preds1, preds2, panoptic1, panoptic2, ocr1, ocr2, path, img['file_path'])
+                            except Exception as e:
+                                print(f"Error while processing predictions: {e}")
+                                continue
+                            
+                            try:
+                                is_similar = bool(re.search(r'yes', llm_output, re.IGNORECASE))
+                            except Exception as e:
+                                print(f"Error while checking similarity: {e}")
+                                exception_event.set()
+                                print("Sleeping for 60 seconds")
+                                time.sleep(60)
+                                exception_event.clear()
+                                continue
+                            
+                            if is_similar:
+                                found_langs.append(img['lang'])
+                                if img['lang'] not in row['languages']:
+                                    row['languages'].append(img['lang'])
+            except Exception as e:
+                print(f"Error while processing row: {e}")
+            
+            time.sleep(1)
+
+            return row
+
+        # Usando ThreadPoolExecutor para processar cada linha em paralelo
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Mapeia a função process_row para cada linha do DataFrame
+            future_to_row = {executor.submit(process_row, row): row for _, row in df.iterrows()}
+            for future in concurrent.futures.as_completed(future_to_row):
+                row = future_to_row[future]
+                try:
+                    data = future.result()
+                    # Access the "data" variable here
+                    print(f'Processed {row["original_photo"]}')
+                except Exception as exc:
+                    print('%r gerou uma exceção: %s' % (row, exc))
+        
+        # Salva o DataFrame após processar todas as linhas
+        try:
+            df.to_csv(f'output/{folder}-zero_shot.csv', index=False)
+        except Exception as e:
+            print(f"Error while saving DataFrame: {e}")
 
     def run(self):
         start = time.time()

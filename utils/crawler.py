@@ -1,6 +1,5 @@
 import os
 import re
-import time
 from PIL import Image
 import pandas as pd
 from selenium import webdriver
@@ -34,7 +33,7 @@ class ImageDownloader:
 
             self._create_directory_if_not_exists()
 
-            for i, img_link in enumerate(img_links):
+            for _, img_link in enumerate(img_links):
                 self._process_image_link(img_link)
 
             driver.quit()

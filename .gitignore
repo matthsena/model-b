@@ -174,3 +174,5 @@ data-quentes/
 imgs/
 plots
 images/
+
+*.db
