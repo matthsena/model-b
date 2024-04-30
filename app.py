@@ -219,6 +219,7 @@ class ImgFeatureExtractor:
             df = pd.DataFrame(score_z)
             final_df = pd.concat([final_df, df])
             llm_df = pd.concat([llm_df, df_llm])
+            print(llm_df)
         self.generate_plots(final_df)
         self.generate_plots(llm_df, True)
         end = time.time()

@@ -46,7 +46,7 @@ class ScoreCalculator:
                       }))
                       .reset_index())
     
-        similar_df, uniques_df = self.get_similand_n_uniques(df)
+        # similar_df, uniques_df = self.get_similand_n_uniques(df)
 
         # grouped_df = pd.concat([similar_df, uniques_df])
         # sorted_df = grouped_df.sort_values(by='num_languages', ascending=False)
